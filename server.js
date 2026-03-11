@@ -549,7 +549,7 @@ app.use('/api/trpc', createExpressMiddleware({
 }));
 
 // Serve frontend statico
-const STATIC_DIR = path.join(__dirname, 'web');
+const STATIC_DIR = path.join(__dirname, 'public');
 if (fs.existsSync(STATIC_DIR)) {
   app.use(express.static(STATIC_DIR));
   app.get('*', (req, res) => {
