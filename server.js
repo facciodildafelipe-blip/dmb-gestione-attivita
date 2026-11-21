@@ -41,16 +41,28 @@ function loadData() {
     }
   } catch (e) {
     console.error('[DB] Errore caricamento dati:', e.message);
-    seedData();
+    // FAIL CLOSED: never replace an unreadable archive with sample records.
+    throw new Error('Archivio dati non leggibile: avvio bloccato per evitare sovrascritture');
   }
 }
 
-// Salva dati su file JSON
+// Persist to a temporary file, fsync it, then atomically rename.
+// Errors propagate to the caller: never report success after a failed write.
 function saveData() {
+  const tempPath = DATA_PATH + '.tmp-' + process.pid;
+  let fd;
   try {
-    fs.writeFileSync(DATA_PATH, JSON.stringify(db, null, 2));
+    fd = fs.openSync(tempPath, 'wx', 0o600);
+    fs.writeFileSync(fd, JSON.stringify(db, null, 2));
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(tempPath, DATA_PATH);
   } catch (e) {
+    if (fd !== undefined) fs.closeSync(fd);
+    try { fs.unlinkSync(tempPath); } catch (_) { /* cleanup only */ }
     console.error('[DB] Errore salvataggio dati:', e.message);
+    throw e;
   }
 }
 
@@ -495,6 +507,11 @@ app.use((req, res, next) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true, dipendenti: db.dipendenti.length }));
+
+// SECURITY HOLD: this prototype has public procedures without role authorization.
+// Keep API disabled until verified authentication, authorization and tenant isolation
+// are implemented and tested. Do not bypass this gate for production data.
+app.use('/api/trpc', (_req, res) => res.status(503).json({ error: 'API temporaneamente disabilitata: autorizzazioni non verificate' }));
 
 app.use('/api/trpc', createExpressMiddleware({
   router: appRouter,
